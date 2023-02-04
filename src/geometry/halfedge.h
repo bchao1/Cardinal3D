@@ -276,6 +276,109 @@ public:
         return r;
     }
 
+    std::optional<EdgeRef> connect_vertex(HalfedgeRef h0_init, HalfedgeRef h1_init) {
+        if(h0_init->face() != h1_init->face()) return std::nullopt;
+
+        VertexRef v0 = h0_init->vertex();
+        VertexRef v1 = h1_init->vertex();
+        FaceRef f = h0_init->face();
+        
+        HalfedgeRef h1 = h0_init;
+        HalfedgeRef h3 = h1_init;
+        HalfedgeRef h0 = h1->prev();
+        HalfedgeRef h2 = h3->prev();
+
+        HalfedgeRef new_h0 = new_halfedge();
+        HalfedgeRef new_h1 = new_halfedge();
+
+        new_h0->vertex() = v0;
+        new_h1->vertex() = v1;
+
+        EdgeRef new_e = new_edge();
+        new_e->halfedge() = new_h1;
+        new_h0->edge() = new_e;
+        new_h1->edge() = new_e;
+
+        new_h0->twin() = new_h1;
+        new_h1->twin() = new_h0;
+
+        FaceRef new_f = new_face();
+        f->halfedge() = new_h0;
+        new_f->halfedge() = new_h1;
+
+        // assign new faces
+        HalfedgeRef h = h1;
+        while(true) {
+            h->face() = new_f;
+            if(h == h2) break;
+            h = h->next();
+        }
+
+        new_h0->face() = f;
+        new_h1->face() = new_f;
+
+        h0->next() = new_h0;
+        new_h0->next() = h3;
+        h2->next() = new_h1;
+        new_h1->next() = h1;
+
+        return new_e;
+    }
+
+    VertexRef insert_vertex(EdgeRef e0) {
+        VertexRef v0 = new_vertex();
+        v0->pos = e0->center();
+
+        EdgeRef e1 = new_edge();
+
+        FaceRef f0 = e0->halfedge()->face();
+        FaceRef f1 = e0->halfedge()->twin()->face();
+
+        HalfedgeRef h0 = e0->halfedge();
+        HalfedgeRef h1 = h0->next();
+        HalfedgeRef h2 = h0->twin();
+        HalfedgeRef h3 = h2->next();
+
+        HalfedgeRef h4 = new_halfedge();
+        HalfedgeRef h5 = new_halfedge();
+
+        
+        // assign new halfedges
+        v0->halfedge() = h4;
+        if(e0->halfedge() == h2) e0->halfedge() = h5;
+        e1->halfedge() = h4;
+
+        // assign new vertices
+        h4->vertex() = v0;
+        h5->vertex() = v0;
+
+        // assign new edges
+        h4->edge() = e1;
+        h2->edge() = e1;
+        h0->edge() = e0;
+        h5->edge() = e0;
+
+        // assign new faces
+        h0->face() = f0;
+        h4->face() = f0;
+        h2->face() = f1;
+        h5->face() = f1;
+
+        // assign new twins
+        h4->twin() = h2;
+        h2->twin() = h4;
+        h5->twin() = h0;
+        h0->twin() = h5;
+
+        // assign new next
+        h0->next() = h4;
+        h4->next() = h1;
+        h2->next() = h5;
+        h5->next() = h3;
+
+        return v0;
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////////
     // Student Global Operations | student/meshedit.cpp
     //////////////////////////////////////////////////////////////////////////////////////////
@@ -348,6 +451,15 @@ public:
         // Returns an id unique to this vertex
         unsigned int id() const {
             return _id;
+        }
+
+        HalfedgeRef get_halfedge_in_face(FaceRef f) {
+            HalfedgeRef h = halfedge();
+            do {
+                if(h->face() == f) return h;
+                h = h->twin()->next();
+            } while(h != halfedge());
+            return h;
         }
 
         // The vertex position
@@ -471,6 +583,14 @@ public:
         }
         FaceCRef face() const {
             return _face;
+        }
+
+        // Retrieves previous halfedge
+        HalfedgeRef prev() {
+            HalfedgeRef ptr = this->next();
+            while(&(*ptr->next()) != this)
+                ptr = ptr->next();
+            return ptr;
         }
 
         // Returns an id unique to this halfedge

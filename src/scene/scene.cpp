@@ -445,9 +445,9 @@ static Scene_Light::Options load_light(aiLight* ai_light, bool hemi, bool sphere
             opt.type = Light_Type::hemisphere;
         else if(sphere) {
             opt.type = Light_Type::sphere;
-            if(ai_light->mEnvMap.length) {
-                opt.has_emissive_map = true;
-            }
+            //if(ai_light->mEnvMap.length) {
+            //    opt.has_emissive_map = true;
+            //}
         } else if(area) {
             opt.type = Light_Type::rectangle;
             opt.size.x = ai_light->mAttenuationConstant;
@@ -825,7 +825,7 @@ std::string Scene::load(Scene::Load_Opts loader, Undo& undo, Gui::Manager& gui, 
             light.opt = opt;
 
             if(light.opt.has_emissive_map) {
-                light.emissive_load(std::string(ai_light->mEnvMap.C_Str()));
+                //light.emissive_load(std::string(ai_light->mEnvMap.C_Str()));
             }
 
             if(!light.is_env() || !has_env_light()) {
@@ -1018,7 +1018,7 @@ static std::string write_light(aiLight* ai_light, const Scene_Light::Options& op
         ai_light->mColorAmbient = aiColor3D(r.r, r.g, r.b);
         name += "-S3D-" + SPHERE_TAG + "-" + std::to_string(id);
         if(opt.has_emissive_map) {
-            ai_light->mEnvMap = aiString(map);
+            //ai_light->mEnvMap = aiString(map);
         }
     } break;
     case Light_Type::hemisphere: {
