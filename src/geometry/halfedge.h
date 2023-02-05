@@ -387,6 +387,7 @@ public:
         Splits all non-triangular faces into triangles.
     */
     void triangulate();
+    void triangulate_face(FaceRef f);
 
     /*
         Compute new vertex positions for a mesh that splits each polygon
