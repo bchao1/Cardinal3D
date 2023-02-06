@@ -38,7 +38,27 @@
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh::VertexRef v) {
 
     (void)v;
-    return std::nullopt;
+    if(v == vertices.end()) return std::nullopt; // Don't erase invalid vertices
+    if(v->on_boundary()) return std::nullopt; // Don't erase boundary vertices
+
+    std::vector<EdgeRef> adjacent_edges;
+    HalfedgeRef h = v->halfedge();
+    do {
+        std::cout << h->edge()->id() << "\n";
+        adjacent_edges.push_back(h->edge());
+        h = h->twin()->next();
+    } while(h != v->halfedge());
+
+    std::optional<FaceRef> f = std::nullopt;
+    for(auto e : adjacent_edges) {
+        std::cout << e->id() << "\n";
+        f = erase_edge(e);
+        if(f == std::nullopt) {
+            std::cout << "Erasing vertex failed.\n";
+            return std::nullopt;
+        }
+    }
+    return f;
 }
 
 /*
@@ -48,7 +68,70 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh:
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_edge(Halfedge_Mesh::EdgeRef e) {
 
     (void)e;
-    return std::nullopt;
+    if(e->on_boundary()) return std::nullopt; // Don't erase boundary edges
+    if(e == edges.end()) return std::nullopt; // Don't erase invalid edges
+    
+    std::cout << "erasing edge: " << e->id() << "\n";
+
+    HalfedgeRef h0 = e->halfedge();
+    HalfedgeRef h1 = h0->twin();
+    FaceRef f0 = h0->face();
+    FaceRef f1 = h1->face();
+    VertexRef v0 = h0->vertex();
+    VertexRef v1 = h1->vertex();
+
+    if(f0 == f1) {
+        if(h0->next()->next() == h0 && h0->next() == h1) {
+            erase(h0);
+            erase(h1);
+            erase(v0);
+            erase(v1);
+            erase(e);
+            erase(f0);
+            return std::nullopt;
+        } 
+        HalfedgeRef h2 = (h0->next() == h1) ? h0 : h1; // check halfedge orientation
+        HalfedgeRef h3 = h2->twin();
+        HalfedgeRef h4 = h2->prev();
+        HalfedgeRef h5 = h3->next();
+        v0 = h2->vertex();
+        v1 = h3->vertex();
+        f0 = h2->face();
+
+        v0->halfedge() = h5;
+        f0->halfedge() = h4;
+
+        h4->next() = h5;
+
+        erase(v1);
+        erase(h2);
+        erase(h3);
+        erase(e);
+        return f0;
+    }
+
+    HalfedgeRef h2 = h0->prev();
+    HalfedgeRef h3 = h0->next();
+    HalfedgeRef h4 = h1->prev();
+    HalfedgeRef h5 = h1->next();
+
+    v0->halfedge() = h5;
+    v1->halfedge() = h3;
+    f0->halfedge() = h2;
+
+    for(HalfedgeRef h = h5; h != h1; h = h->next()) {
+        h->face() = f0;
+    }
+
+    h2->next() = h5;
+    h4->next() = h3;
+
+    erase(h0);
+    erase(h1);
+    erase(e);
+    erase(f1);
+    
+    return f0;
 }
 
 /*
@@ -60,7 +143,10 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
     // some bugs
 
     (void)e;
-    if(e->on_boundary()) return std::nullopt; // Don't collapse boundary edges
+    if(e->on_boundary()) {
+        std::cout << "boundary edge, not collapsing\n";
+        return std::nullopt; // Don't collapse boundary edges
+    }
 
     HalfedgeRef h0 = e->halfedge();
     HalfedgeRef h1 = h0->twin();
@@ -230,8 +316,16 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(Halfedge_Mesh::Ed
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(Halfedge_Mesh::EdgeRef e) {
     (void)e;
-
-    // Works only with triangles
+    
+    if(e->on_boundary()) {
+        HalfedgeRef h0 = (e->halfedge()->is_boundary()) ? e->halfedge() : e->halfedge()->twin();
+        FaceRef f0 = h0->face();
+        HalfedgeRef h1 = h0->prev();
+        VertexRef v0 = h1->vertex();
+        VertexRef v1 = insert_vertex(e, e->center());
+        connect_vertex(v0->halfedge(), v1->get_halfedge_in_face(f0));
+        return v1;
+    }
 
     HalfedgeRef h0 = e->halfedge();
     HalfedgeRef h1 = h0->twin();
@@ -243,7 +337,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(Halfedge_Mesh:
 
     if(f0->degree() != 3 || f1->degree() != 3) return std::nullopt; // Don't split non-triangles
 
-    VertexRef v2 = insert_vertex(e);
+    VertexRef v2 = insert_vertex(e, e->center());
     connect_vertex(h2, v2->get_halfedge_in_face(f0));
     connect_vertex(v2->get_halfedge_in_face(f1), h3);
     return v2;
@@ -287,7 +381,35 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_vertex(Halfedge_Mesh:
     // the same as wherever they "started from."
 
     (void)v;
-    return std::nullopt;
+    if(v->on_boundary()) return std::nullopt; // Don't bevel boundary vertices
+    std::vector<HalfedgeRef> adj_halfedges;
+    HalfedgeRef h = v->halfedge();
+    do {
+        adj_halfedges.push_back(h);
+        h = h->twin()->next();
+    } while(h != v->halfedge());
+
+    reverse(adj_halfedges.begin(), adj_halfedges.end());
+
+    std::vector<VertexRef> new_vertices;
+    for(unsigned int i = 0; i < adj_halfedges.size(); i++) {
+        EdgeRef e = adj_halfedges[i]->edge();
+        std::cout << "bevel edge: " << e->id() << std::endl;
+        new_vertices.push_back(insert_vertex(e, e->center()));
+    }
+    for(unsigned int i = 0; i < adj_halfedges.size(); i++) {
+        VertexRef v0 = new_vertices[i];
+        VertexRef v1 = new_vertices[(i + 1) % adj_halfedges.size()];
+        std::cout << "bevel vertex: " << v0->id() << " " << v1->id() << std::endl;
+        FaceRef f0 = adj_halfedges[i]->face();
+        std::cout << "bevel face: " << f0->id() << std::endl;
+        HalfedgeRef h0 = v0->get_halfedge_in_face(f0);
+        HalfedgeRef h1 = v1->get_halfedge_in_face(f0);
+        connect_vertex(h0, h1);
+        std::cout << "bevel vertex halfedges: " << h0->id() << " " << h1->id() << std::endl;
+    }
+
+    return erase_vertex(v);
 }
 
 /*
@@ -322,6 +444,8 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_face(Halfedge_Mesh::F
     // the same as wherever they "started from."
 
     (void)f;
+    if(f->is_boundary()) return std::nullopt; // Don't bevel boundary faces
+
     return std::nullopt;
 }
 
@@ -344,11 +468,20 @@ void Halfedge_Mesh::bevel_vertex_positions(const std::vector<Vec3>& start_positi
         new_halfedges.push_back(h);
         h = h->next();
     } while(h != face->halfedge());
-
+    std::cout << "Bevel vertex added face: " << face->id() << std::endl;
     (void)new_halfedges;
     (void)start_positions;
     (void)face;
     (void)tangent_offset;
+    for(unsigned int i = 0; i < new_halfedges.size(); i++) {
+        VertexRef v0 = new_halfedges[i]->vertex();
+        VertexRef v1 = new_halfedges[i]->twin()->vertex();
+
+        Vec3 dir = v1->pos - v0->pos;
+        Vec3 shift = dir * tangent_offset;
+
+        v0->pos += shift;
+    }
 }
 
 /*
@@ -679,7 +812,30 @@ struct Edge_Record {
         //    Edge_Record::optimal.
         // -> Also store the cost associated with collapsing this edge in
         //    Edge_Record::cost.
+
+        Halfedge_Mesh::VertexRef v0 = e->halfedge()->vertex();
+        Halfedge_Mesh::VertexRef v1 = e->halfedge()->twin()->vertex();
+        Mat4 Q = vertex_quadrics[v0] + vertex_quadrics[v1];
+        Mat4 A = Mat4::Zero;
+        Vec3 b = Vec3(0, 0, 0);
+        for(unsigned int i = 0; i < 2; i++){
+            for(unsigned int j = 0; j < 2; j++){
+                A[i][j] = Q[i][j];
+            }
+        }
+        for(unsigned int i = 0; i < 2; i++){
+            b[i] = -Q[3][i];
+        }
+
+        if(abs(A.det()) < 1e-6) {
+            optimal = edge->center();
+        } else {
+            optimal = A.inverse() * b;
+        }
+        Vec4 u = Vec4(optimal, 1);
+        cost = dot(u, Q * u);
     }
+
     Halfedge_Mesh::EdgeRef edge;
     Vec3 optimal;
     float cost;
@@ -806,5 +962,81 @@ bool Halfedge_Mesh::simplify() {
     // but here simply calling collapse_edge() will not erase the elements.
     // You should use collapse_edge_erase() instead for the desired behavior.
 
-    return false;
+    // Edge cases:
+    // 1. very small mesh (4 faces)
+    // 2. non-triangle meshes
+
+    for(auto f = faces.begin(); f != faces.end(); f++) {
+        if(f->degree() != 3) return false;
+    }
+
+    for(auto f = faces.begin(); f != faces.end(); f++) {
+        double d = -dot(f->normal(), f->halfedge()->vertex()->pos);
+        Vec4 v = Vec4(f->normal(), d);
+        face_quadrics[f] = outer(v, v);
+    }
+    
+    for(auto v = vertices.begin(); v != vertices.end(); v++) {
+        Mat4 q = Mat4::Zero;
+        auto adjacent_faces = v->adjacent_faces();
+        for(auto f : adjacent_faces) {
+            q += face_quadrics[f];
+        }
+        vertex_quadrics[v] = q;
+    }
+
+    for(auto e = edges.begin(); e != edges.end(); e++) {
+        Edge_Record er = Edge_Record(vertex_quadrics, e);
+        edge_queue.insert(er);
+        edge_records[e] = er;
+    }
+
+    unsigned int num_target_faces = faces.size() / 4;
+    if(num_target_faces < 4) return false; // dirty fix for edge case 1
+    while(faces.size() > num_target_faces) {
+        Edge_Record best_er = edge_queue.top();
+        edge_queue.pop();
+
+        auto adjacent_edges = best_er.edge->adjacent_edges();
+        for(auto e : adjacent_edges) {
+            edge_queue.remove(edge_records[e]);
+        }
+
+        std::optional<VertexRef> collapse_result = collapse_edge_erase(best_er.edge);
+        if(collapse_result == std::nullopt) {
+            std::cout << "Mesh simplification: collapse failed.\n";
+            return false;
+        }
+        Halfedge_Mesh::VertexRef new_vertex = std::move(*collapse_result);
+        new_vertex->pos = best_er.optimal;
+
+        Mat4 q = Mat4::Zero;
+        auto adjacent_faces = new_vertex->adjacent_faces();
+        for(auto f : adjacent_faces) {
+            double d = -dot(f->normal(), f->halfedge()->vertex()->pos);
+            Vec4 v = Vec4(f->normal(), d);
+            face_quadrics[f] = outer(v, v);
+            q += face_quadrics[f];
+        }
+        vertex_quadrics[new_vertex] = q;
+
+
+        auto adjacent_vertices = new_vertex->adjacent_vertices();
+        for(auto v : adjacent_vertices) {
+            Mat4 q = Mat4::Zero;
+            auto adjacent_faces = v->adjacent_faces();
+            for(auto f : adjacent_faces) {
+                q += face_quadrics[f];
+            }
+            vertex_quadrics[v] = q;
+        }
+
+        adjacent_edges = new_vertex->adjacent_edges();
+        for(auto e : adjacent_edges) {
+            Edge_Record er = Edge_Record(vertex_quadrics, e);
+            edge_queue.insert(er);
+            edge_records[e] = er;
+        }
+    }
+    return true;
 }

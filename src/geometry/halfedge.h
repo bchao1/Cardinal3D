@@ -325,9 +325,9 @@ public:
         return new_e;
     }
 
-    VertexRef insert_vertex(EdgeRef e0) {
+    VertexRef insert_vertex(EdgeRef e0, Vec3 pos) {
         VertexRef v0 = new_vertex();
-        v0->pos = e0->center();
+        v0->pos = pos;
 
         EdgeRef e1 = new_edge();
 
@@ -463,6 +463,37 @@ public:
             return h;
         }
 
+        std::set<EdgeRef> adjacent_edges() {
+            std::set<EdgeRef> edges;
+            HalfedgeRef h = halfedge();
+            do {
+                edges.insert(h->edge());
+                h = h->twin()->next();
+            } while(h != halfedge());
+            return edges;
+        }
+
+        std::set<FaceRef> adjacent_faces() {
+            std::set<FaceRef> faces;
+            HalfedgeRef h = halfedge();
+            do {
+                faces.insert(h->face());
+                h = h->twin()->next();
+            } while(h != halfedge());
+            return faces;
+        }
+
+        std::set<VertexRef> adjacent_vertices() {
+            std::set<VertexRef> vertices;
+            HalfedgeRef h = halfedge();
+            do {
+                vertices.insert(h->twin()->vertex());
+                h = h->twin()->next();
+            } while(h != halfedge());
+            return vertices;
+        }
+
+
         // The vertex position
         Vec3 pos;
 
@@ -497,6 +528,16 @@ public:
         // Returns an id unique to this edge
         unsigned int id() const {
             return _id;
+        }
+
+        std::set<EdgeRef> adjacent_edges() {
+            std::set<EdgeRef> edges;
+            auto v0_adjedges = halfedge()->vertex()->adjacent_edges();
+            auto v1_adjedges = halfedge()->twin()->vertex()->adjacent_edges();
+            edges.insert(v0_adjedges.begin(), v0_adjedges.end());
+            edges.insert(v1_adjedges.begin(), v1_adjedges.end());
+            edges.erase(halfedge()->edge());
+            return edges;
         }
 
     private:
