@@ -575,6 +575,46 @@ public:
             return _id;
         }
 
+        std::set<FaceRef> adjacent_faces() {
+            std::set<FaceRef> faces;
+            HalfedgeRef h = halfedge();
+            do {
+                faces.insert(h->twin()->face());
+                h = h->next();
+            } while(h != halfedge());
+            return faces;
+        }
+
+        std::vector<HalfedgeRef> halfedges() {
+            std::vector<HalfedgeRef> halfedges;
+            HalfedgeRef h = halfedge();
+            do {
+                halfedges.push_back(h);
+                h = h->next();
+            } while(h != halfedge());
+            return halfedges;
+        }
+
+        std::vector<EdgeRef> edges() {
+            std::vector<EdgeRef> edges;
+            HalfedgeRef h = halfedge();
+            do {
+                edges.push_back(h->edge());
+                h = h->next();
+            } while(h != halfedge());
+            return edges;
+        }
+
+        std::vector<VertexRef> vertices() {
+            std::vector<VertexRef> vertices;
+            HalfedgeRef h = halfedge();
+            do {
+                vertices.push_back(h->vertex());
+                h = h->next();
+            } while(h != halfedge());
+            return vertices;
+        }
+        
     private:
         Face(unsigned int id, bool is_boundary) : _id(id), boundary(is_boundary) {
         }

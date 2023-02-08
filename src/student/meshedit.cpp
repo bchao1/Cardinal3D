@@ -446,7 +446,102 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_face(Halfedge_Mesh::F
     (void)f;
     if(f->is_boundary()) return std::nullopt; // Don't bevel boundary faces
 
-    return std::nullopt;
+    std::vector<HalfedgeRef> old_halfedges = f->halfedges();
+    std::vector<VertexRef> old_vertices = f->vertices();
+    std::vector<EdgeRef> old_edges = f->edges();
+
+    int N = f->degree(); // number of vertices / edges around face
+
+    std::vector<VertexRef> new_vertices;
+
+    std::vector<EdgeRef> new_face_edges;
+    std::vector<EdgeRef> connect_edges;
+
+    std::vector<HalfedgeRef> new_face_halfedges;
+    std::vector<HalfedgeRef> new_face_halfedges_twin;
+    std::vector<HalfedgeRef> connect_halfedges_up;
+    std::vector<HalfedgeRef> connect_halfedges_down;
+
+    // allocate new data
+    FaceRef new_bevel_face = new_face(); // bevelled face
+    std::vector<FaceRef> new_faces_around; // new faces around bevelled face
+
+    for(int i = 0; i < N; i++) {
+        new_vertices.push_back(new_vertex());
+        new_face_edges.push_back(new_edge());
+        connect_edges.push_back(new_edge());
+        new_face_halfedges.push_back(new_halfedge());
+        new_face_halfedges_twin.push_back(new_halfedge());
+        connect_halfedges_up.push_back(new_halfedge());
+        connect_halfedges_down.push_back(new_halfedge());
+        new_faces_around.push_back(new_face());
+    }
+    // go around face
+    for(int i = 0; i < N; i++){
+        auto next_id = (i + 1) % N;
+        auto prev_id = (i + N - 1) % N;
+
+        // original halfedge
+        auto h = old_halfedges[i];
+        h->face() = new_faces_around[i];
+        h->edge() = old_edges[i];
+        h->next() = connect_halfedges_up[next_id];
+        h->vertex() = old_vertices[i];
+
+        // new face halfedge
+        auto h_new = new_face_halfedges[i];
+        h_new->face() = new_bevel_face;
+        h_new->edge() = new_face_edges[i];
+        h_new->next() = new_face_halfedges[next_id];
+        h_new->vertex() = new_vertices[i];
+        h_new->twin() = new_face_halfedges_twin[i];
+
+        // new face halfedge twin
+        auto h_new_twin = new_face_halfedges_twin[i];
+        h_new_twin->face() = new_faces_around[i];
+        h_new_twin->edge() = new_face_edges[i];
+        h_new_twin->next() = connect_halfedges_down[i];
+        h_new_twin->vertex() = new_vertices[next_id];
+        h_new_twin->twin() = new_face_halfedges[i];
+
+        // new connect halfedge up
+        auto h_connect_up = connect_halfedges_up[i];
+        h_connect_up->face() = new_faces_around[prev_id];
+        h_connect_up->edge() = connect_edges[i];
+        h_connect_up->next() = new_face_halfedges_twin[prev_id];
+        h_connect_up->vertex() = old_vertices[i];
+        h_connect_up->twin() = connect_halfedges_down[i];
+
+        // new connect halfedge down
+        auto h_connect_down = connect_halfedges_down[i];
+        h_connect_down->face() = new_faces_around[i];
+        h_connect_down->edge() = connect_edges[i];
+        h_connect_down->next() = old_halfedges[i];
+        h_connect_down->vertex() = new_vertices[i];
+        h_connect_down->twin() = connect_halfedges_up[i];
+
+        // original twin halfedge: do nothing
+        // original edge: do nothing
+        // original vertex: do nothing
+
+        // new vertices
+        new_vertices[i]->halfedge() = new_face_halfedges[i];
+        new_vertices[i]->pos = old_vertices[i]->pos;
+
+        // new face edge
+        new_face_edges[i]->halfedge() = new_face_halfedges[i];
+        // new connect edge
+        connect_edges[i]->halfedge() = connect_halfedges_up[i];
+
+        // new faces around bevelled face
+        new_faces_around[i]->halfedge() = old_halfedges[i];
+        // new face
+        new_bevel_face->halfedge() = new_face_halfedges[0];
+    }
+
+    erase(f); // delete old face
+
+    return new_bevel_face;
 }
 
 /*
@@ -558,6 +653,20 @@ void Halfedge_Mesh::bevel_face_positions(const std::vector<Vec3>& start_position
     (void)face;
     (void)tangent_offset;
     (void)normal_offset;
+
+    // compute face normal
+    auto normal = face->normal();
+    auto center = face->center();
+
+    for(unsigned int i = 0; i < new_halfedges.size(); i++) {
+        auto pos = new_halfedges[i]->vertex()->pos;
+        auto v = center - pos;
+        v.normalize();
+        auto tangent_offset_scaled = v * tangent_offset * 0.1;
+        auto normal_offset_scaled = normal * normal_offset * 0.1;
+        auto offset = tangent_offset_scaled + normal_offset_scaled;
+        new_halfedges[i]->vertex()->pos += offset;
+    }
 }
 
 /*
@@ -964,19 +1073,26 @@ bool Halfedge_Mesh::simplify() {
 
     // Edge cases:
     // 1. very small mesh (4 faces)
-    // 2. non-triangle meshes
+    // 2. non-triangle meshes (bunny)
+    // 3. edge wrapping vertex
+    // 4. duplicate edges
 
     for(auto f = faces.begin(); f != faces.end(); f++) {
-        if(f->degree() != 3) return false;
+        if(f->degree() != 3) {
+            std::cout << "Detected non-triangle polygons\n";
+            return false;
+        }
     }
 
     for(auto f = faces.begin(); f != faces.end(); f++) {
+        std::cout << "building face quadrics\n";
         double d = -dot(f->normal(), f->halfedge()->vertex()->pos);
         Vec4 v = Vec4(f->normal(), d);
         face_quadrics[f] = outer(v, v);
     }
     
     for(auto v = vertices.begin(); v != vertices.end(); v++) {
+        std::cout << "building vertex quadrics\n";
         Mat4 q = Mat4::Zero;
         auto adjacent_faces = v->adjacent_faces();
         for(auto f : adjacent_faces) {
@@ -986,6 +1102,7 @@ bool Halfedge_Mesh::simplify() {
     }
 
     for(auto e = edges.begin(); e != edges.end(); e++) {
+        std::cout << "building edge records\n";
         Edge_Record er = Edge_Record(vertex_quadrics, e);
         edge_queue.insert(er);
         edge_records[e] = er;
