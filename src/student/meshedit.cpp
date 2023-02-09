@@ -246,7 +246,56 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Mesh::FaceRef f) {
 
     (void)f;
-    return std::nullopt;
+
+    unsigned int N = f->degree();
+
+    // properties of the face
+    auto halfedges = f->halfedges();
+    auto edges = f->edges();
+    auto vertices = f->vertices();
+
+    std::vector<HalfedgeRef>halfedges_out;
+    std::vector<HalfedgeRef>halfedges_twin;
+
+    for(unsigned int i = 0; i < N; i++) {
+        auto vertex_halfedges_out = vertices[i]->adjacent_halfedges();
+        for(auto vh : vertex_halfedges_out) {
+            if(vh->face() != f) {
+                halfedges_out.push_back(vh);
+            }
+        }
+        halfedges_twin.push_back(halfedges[i]->twin());
+    }
+    for(unsigned int i = 0; i < N; i++) {
+        auto h_twin = halfedges_twin[i];
+        h_twin->prev()->next() = h_twin->next();
+        h_twin->face()->halfedge() = h_twin->next();
+    }
+
+    auto added_vertex = new_vertex();
+    added_vertex->pos = f->center();
+    added_vertex->halfedge() = halfedges_out[0];
+
+    for(auto h : halfedges_out) {
+        h->vertex() = added_vertex;
+    }
+
+    // cleanup
+    for(unsigned int i = 0; i < N; i++) {
+        auto h_twin = halfedges_twin[i];
+        if(h_twin->next()->next() == h_twin->prev()) {
+            erase(h_twin->face());
+            erase_edge(h_twin->prev()->edge());
+        }
+
+        erase(halfedges[i]);
+        erase(halfedges_twin[i]);
+        erase(edges[i]);
+    }
+    
+    erase(f);
+
+    return added_vertex;
 }
 
 /*

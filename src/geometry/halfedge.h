@@ -473,6 +473,16 @@ public:
             return edges;
         }
 
+        std::set<HalfedgeRef> adjacent_halfedges() {
+            std::set<HalfedgeRef> halfedges;
+            HalfedgeRef h = halfedge();
+            do {
+                halfedges.insert(h);
+                h = h->twin()->next();
+            } while(h != halfedge());
+            return halfedges;
+        }
+
         std::set<FaceRef> adjacent_faces() {
             std::set<FaceRef> faces;
             HalfedgeRef h = halfedge();
@@ -575,16 +585,6 @@ public:
             return _id;
         }
 
-        std::set<FaceRef> adjacent_faces() {
-            std::set<FaceRef> faces;
-            HalfedgeRef h = halfedge();
-            do {
-                faces.insert(h->twin()->face());
-                h = h->next();
-            } while(h != halfedge());
-            return faces;
-        }
-
         std::vector<HalfedgeRef> halfedges() {
             std::vector<HalfedgeRef> halfedges;
             HalfedgeRef h = halfedge();
@@ -594,6 +594,7 @@ public:
             } while(h != halfedge());
             return halfedges;
         }
+
 
         std::vector<EdgeRef> edges() {
             std::vector<EdgeRef> edges;
@@ -614,7 +615,7 @@ public:
             } while(h != halfedge());
             return vertices;
         }
-        
+
     private:
         Face(unsigned int id, bool is_boundary) : _id(id), boundary(is_boundary) {
         }
