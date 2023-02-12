@@ -211,6 +211,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
     }
     else {
         h3->next() = h2;
+        f0->halfedge() = h2;
     }
     if(f1_deg == 3) {
         h11->next() = h5;
@@ -225,6 +226,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
     }
     else {
         h5->next() = h4;
+        f1->halfedge() = h4;
     }
 
     newVertex->halfedge() = h7;
@@ -260,18 +262,19 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Me
     for(unsigned int i = 0; i < N; i++) {
         auto vertex_halfedges_out = vertices[i]->adjacent_halfedges();
         for(auto vh : vertex_halfedges_out) {
-            if(vh->face() != f) {
+            if(vh->edge() != edges[i]) {
                 halfedges_out.push_back(vh);
             }
         }
         halfedges_twin.push_back(halfedges[i]->twin());
     }
+    std::cout << "ckpt 1\n";
     for(unsigned int i = 0; i < N; i++) {
         auto h_twin = halfedges_twin[i];
         h_twin->prev()->next() = h_twin->next();
         h_twin->face()->halfedge() = h_twin->next();
     }
-
+    std::cout << "ckpt 2\n";
     auto added_vertex = new_vertex();
     added_vertex->pos = f->center();
     added_vertex->halfedge() = halfedges_out[0];
@@ -282,17 +285,22 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Me
 
     // cleanup
     for(unsigned int i = 0; i < N; i++) {
-        auto h_twin = halfedges_twin[i];
-        if(h_twin->next()->next() == h_twin->prev()) {
-            erase(h_twin->face());
-            erase_edge(h_twin->prev()->edge());
-        }
+        //auto h_twin = halfedges_twin[i];
+        //if(h_twin->next()->next() == h_twin->prev()) {
+        //    erase(h_twin->face());
+        //    //erase_edge(h_twin->prev()->edge());
+        //}
 
         erase(halfedges[i]);
         erase(halfedges_twin[i]);
         erase(edges[i]);
+        erase(vertices[i]);
     }
-    
+
+    // clean up zero faces
+
+    std::cout << "ckpt 3\n";
+
     erase(f);
 
     return added_vertex;
@@ -1124,7 +1132,7 @@ bool Halfedge_Mesh::simplify() {
     // 1. very small mesh (4 faces)
     // 2. non-triangle meshes (bunny)
     // 3. edge wrapping vertex
-    // 4. duplicate edges
+    // 4. duplicate edges (teapot, crashes after 1 iteration)
 
     for(auto f = faces.begin(); f != faces.end(); f++) {
         if(f->degree() != 3) {
@@ -1158,7 +1166,7 @@ bool Halfedge_Mesh::simplify() {
     }
 
     unsigned int num_target_faces = faces.size() / 4;
-    if(num_target_faces < 4) return false; // dirty fix for edge case 1
+    if(num_target_faces < 4) return false;
     while(faces.size() > num_target_faces) {
         Edge_Record best_er = edge_queue.top();
         edge_queue.pop();

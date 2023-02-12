@@ -15,8 +15,10 @@
 - Triangulation
 - LinearSubdivision 
 - CatmullClarkSubdivision
+- Simplification
 ### Advanced
 - EraseVertex
 - EraseEdge 
 - EdgeCollapse - boundary
 - EdgeSplit - boundary
+- FaceCollapse
